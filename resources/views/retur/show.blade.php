@@ -14,19 +14,6 @@
                 🔴 Detail Retur ke Vendor
             </h1>
         </div>
-        
-        @if($retur->status == 'N')
-        <form action="{{ route('retur.updateStatus', $retur->idretur) }}" method="POST">
-            @csrf
-            @method('PUT')
-            <input type="hidden" name="status" value="Y">
-            <button type="submit" 
-                    onclick="return confirm('Approve retur ini?')"
-                    class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg transition font-semibold shadow-lg">
-                ✓ Approve Retur
-            </button>
-        </form>
-        @endif
     </div>
 
     {{-- Info Retur --}}
@@ -116,7 +103,7 @@
                                 {{ $detail->jumlah }} unit
                             </span>
                         </td>
-                        <td class="p-3 text-center text-gray-700">{{ $detail->nama_satuan }}</td>
+                        <td class="p-3 text-center text-gray-700">{{ $detail->nama_satuan ?? '-' }}</td>
                         <td class="p-3">
                             <div class="bg-yellow-50 border-l-4 border-yellow-400 px-3 py-2 rounded">
                                 <span class="text-gray-700 text-sm">{{ $detail->alasan ?? '-' }}</span>
@@ -156,23 +143,11 @@
     </div>
 
     {{-- Action Buttons --}}
-    <div class="flex justify-between items-center">
+    <div class="flex justify-end items-center">
         <a href="{{ route('retur.index') }}" 
            class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition font-semibold">
             ← Kembali
         </a>
-        
-        @if($retur->status == 'N')
-        <form action="{{ route('retur.destroy', $retur->idretur) }}" method="POST" class="inline">
-            @csrf
-            @method('DELETE')
-            <button type="submit"
-                    onclick="return confirm('⚠️ Hapus retur ini? Stok akan dikembalikan!')"
-                    class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg transition font-semibold">
-                🗑️ Hapus Retur
-            </button>
-        </form>
-        @endif
     </div>
 </div>
 @endsection
