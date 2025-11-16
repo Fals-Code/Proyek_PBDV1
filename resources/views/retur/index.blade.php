@@ -230,7 +230,6 @@
     </div>
 </div>
 
-{{-- Script --}}
 <script>
 function toggleModal(show) {
     const modal = document.getElementById('returModal');
@@ -249,29 +248,119 @@ function toggleModal(show) {
     }
 }
 
-async function loadBarangPenerimaan(idpenerimaan) {
+// Event listener
+document.getElementById('penerimaanSelect').addEventListener('change', async function() {
+    const idpenerimaan = this.value;
+    const container = document.getElementById('returItems');
+    
+    if (!idpenerimaan) {
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-8 text-gray-400">
+                <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                </svg>
+                <p class="text-sm font-medium">Pilih penerimaan terlebih dahulu</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-8 text-indigo-600">
+            <svg class="animate-spin h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-sm font-medium">Memuat data barang...</p>
+        </div>
+    `;
+    
     try {
         const response = await fetch(`/retur/get-barang-penerimaan/${idpenerimaan}`);
-        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
-        
-        if (result.success) {
-            // Tampilkan data barang
-            return result.data;
-        } else {
+        if (!result.success) {
             throw new Error(result.message || 'Gagal memuat data');
         }
         
+        const barang = result.data;
+        
+        if (!Array.isArray(barang) || barang.length === 0) {
+            container.innerHTML = `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                    <p class="text-yellow-800 font-medium">⚠️ Tidak ada barang yang bisa diretur</p>
+                    <p class="text-yellow-600 text-sm mt-1">Penerimaan ini tidak memiliki barang atau sudah diretur semua</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        barang.forEach((item, index) => {
+            html += `
+                <div class="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-red-400 transition">
+                    <div class="grid grid-cols-12 gap-4 items-center">
+                        <input type="hidden" name="items[${index}][idbarang]" value="${item.idbarang}">
+                        <input type="hidden" name="items[${index}][iddetail_penerimaan]" value="${item.iddetail_penerimaan}">
+                        
+                        <div class="col-span-4">
+                            <label class="text-xs text-gray-500 font-semibold">Nama Barang</label>
+                            <p class="font-bold text-gray-800">${item.nama_barang}</p>
+                            <p class="text-xs text-gray-500">${item.nama_satuan}</p>
+                        </div>
+                        
+                        <div class="col-span-2 text-center">
+                            <label class="text-xs text-gray-500 font-semibold">Stok Sekarang</label>
+                            <p class="font-bold text-blue-600">${item.stok}</p>
+                        </div>
+                        
+                        <div class="col-span-2 text-center">
+                            <label class="text-xs text-gray-500 font-semibold">Jumlah Diterima</label>
+                            <p class="font-semibold text-gray-700">${item.jumlah_terima}</p>
+                        </div>
+                        
+                        <div class="col-span-2">
+                            <label class="text-xs text-gray-500 font-semibold">Jumlah Retur *</label>
+                            <input type="number" 
+                                   name="items[${index}][jumlah]" 
+                                   min="1" 
+                                   max="${Math.min(item.stok, item.jumlah_terima)}"
+                                   class="w-full border-2 border-gray-300 rounded px-3 py-2 focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                                   placeholder="Jumlah"
+                                   required>
+                            <p class="text-xs text-gray-500 mt-1">Maks: ${Math.min(item.stok, item.jumlah_terima)}</p>
+                        </div>
+                        
+                        <div class="col-span-12 mt-2">
+                            <label class="text-xs text-gray-500 font-semibold">Alasan Retur *</label>
+                            <input type="text" 
+                                   name="items[${index}][alasan]" 
+                                   placeholder="Contoh: Barang rusak/cacat/tidak sesuai"
+                                   class="w-full border-2 border-gray-300 rounded px-3 py-2 focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                                   required>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        
     } catch (error) {
-        console.error('Error:', error);
-        alert('Gagal memuat data barang: ' + error.message);
-        return [];
+        container.innerHTML = `
+            <div class="bg-red-50 border-2 border-red-300 rounded-lg p-4 text-center">
+                <p class="text-red-800 font-bold mb-2">❌ Gagal Memuat Data</p>
+                <p class="text-red-600 text-sm">${error.message}</p>
+                <button onclick="location.reload()" class="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                    Muat Ulang Halaman
+                </button>
+            </div>
+        `;
     }
-}
+});
 
 // Auto hide notifikasi
 setTimeout(() => {
