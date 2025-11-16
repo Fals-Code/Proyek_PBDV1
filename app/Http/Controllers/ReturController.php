@@ -18,12 +18,19 @@ class ReturController extends Controller
             ->orderByDesc('idretur')
             ->get();
 
-        // Ambil daftar penerimaan untuk dropdown
+        // Ambil daftar penerimaan untuk dropdown (retur ke vendor)
         $penerimaan = DB::table('v_detail_penerimaan_header')
             ->orderByDesc('idpenerimaan')
             ->get();
 
-        return view('retur.index', compact('retur', 'penerimaan'));
+        // ✅ Ambil daftar penjualan untuk dropdown (retur dari customer)
+        $penjualan = DB::table('penjualan')
+            ->join('user', 'penjualan.iduser', '=', 'user.iduser')
+            ->select('penjualan.*', 'user.username')
+            ->orderByDesc('idpenjualan')
+            ->get();
+
+        return view('retur.index', compact('retur', 'penerimaan', 'penjualan'));
     }
 
     /**
@@ -32,12 +39,15 @@ class ReturController extends Controller
     public function store(Request $request)
     {
         $request->validate([
+            'jenis_retur' => 'required|in:penerimaan,penjualan', // ✅ Validasi jenis retur
             'items' => 'required|array|min:1',
             'items.*.idbarang' => 'required|integer|exists:barang,idbarang',
             'items.*.jumlah' => 'required|integer|min:1',
             'items.*.alasan' => 'required|string|max:200',
             'items.*.iddetail_penerimaan' => 'nullable|integer|exists:detail_penerimaan,iddetail_penerimaan',
+            'items.*.iddetail_penjualan' => 'nullable|integer|exists:detail_penjualan,iddetail_penjualan',
         ], [
+            'jenis_retur.required' => 'Jenis retur wajib dipilih.',
             'items.required' => 'Tambahkan minimal 1 item untuk diretur.',
             'items.*.idbarang.required' => 'ID Barang wajib diisi.',
             'items.*.idbarang.exists' => 'Barang tidak ditemukan di database.',
@@ -50,39 +60,60 @@ class ReturController extends Controller
             DB::beginTransaction();
 
             $idUser = Auth::user()->iduser;
-            $idPenerimaan = $request->idpenerimaan ?? null;
+            $jenisRetur = $request->jenis_retur;
 
-            // Format items untuk stored procedure
-            $items = json_encode($request->items);
+            // ✅ Tentukan ID referensi berdasarkan jenis retur
+            if ($jenisRetur === 'penerimaan') {
+                $idReferensi = $request->idpenerimaan ?? null; // Retur ke vendor
+                $tableName = 'detail_penerimaan';
+            } else {
+                $idReferensi = $request->idpenjualan ?? null; // Retur dari customer
+                $tableName = 'detail_penjualan';
+            }
 
-            // Panggil stored procedure
-            DB::statement("CALL sp_add_retur(?, ?, ?, @out_id)", [
-                $idPenerimaan,
-                $idUser,
-                $items
+            // ✅ Insert ke tabel retur (header)
+            $idRetur = DB::table('retur')->insertGetId([
+                'idpenerimaan' => $jenisRetur === 'penerimaan' ? $idReferensi : null,
+                'iduser' => $idUser,
+                'jenis_retur' => $jenisRetur, // ✅ Simpan jenis retur
+                'status' => 'N', // N = New
+                'created_at' => now()
             ]);
 
-            // Ambil output ID retur
-            $result = DB::selectOne("SELECT @out_id AS idretur");
-            $idretur = $result->idretur ?? null;
+            // ✅ Insert detail retur
+            foreach ($request->items as $item) {
+
+                // ✅ Validasi jumlah tidak melebihi yang diterima/dijual
+                if ($idReferensi) {
+                    $jumlahAsli = DB::table($tableName)
+                        ->where($jenisRetur === 'penerimaan' ? 'idpenerimaan' : 'idpenjualan', $idReferensi)
+                        ->where('idbarang', $item['idbarang'])
+                        ->value($jenisRetur === 'penerimaan' ? 'jumlah_terima' : 'jumlah');
+
+                    if ($item['jumlah'] > $jumlahAsli) {
+                        DB::rollBack();
+                        return back()->with('error', "Jumlah retur melebihi jumlah " .
+                            ($jenisRetur === 'penerimaan' ? 'penerimaan' : 'penjualan') .
+                            " untuk barang ID: {$item['idbarang']}");
+                    }
+                }
+
+                // Insert detail retur
+                DB::table('detail_retur')->insert([
+                    'idretur' => $idRetur,
+                    'idbarang' => $item['idbarang'],
+                    'jumlah' => $item['jumlah'],
+                    'alasan' => $item['alasan'],
+                    'iddetail_penerimaan' => $item['iddetail_penerimaan'] ?? null,
+                    'created_at' => now()
+                ]);
+            }
 
             DB::commit();
 
-            if (!$idretur) {
-                return back()->with('error', 'Gagal menyimpan retur. Silakan coba lagi.');
-            }
-
             return redirect()->route('retur.index')
-                ->with('success', "Retur #{$idretur} berhasil disimpan!");
-        } catch (\Illuminate\Database\QueryException $e) {
-            DB::rollBack();
-
-            // Handle error dari stored procedure
-            if (str_contains($e->getMessage(), 'melebihi')) {
-                return back()->with('error', 'Jumlah retur melebihi jumlah penerimaan!');
-            }
-
-            return back()->with('error', 'Kesalahan database: ' . $e->getMessage());
+                ->with('success', "Retur #{$idRetur} berhasil disimpan! (Jenis: " .
+                    ($jenisRetur === 'penerimaan' ? 'Retur ke Vendor' : 'Retur dari Customer') . ")");
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
@@ -103,19 +134,18 @@ class ReturController extends Controller
                 ->with('error', 'Data retur tidak ditemukan.');
         }
 
-        // Ambil header (ambil data pertama untuk info umum)
         $header = $retur->first();
 
         return view('retur.show', compact('retur', 'header'));
     }
 
     /**
-     * Update status retur (misal: dari Pending → Selesai)
+     * Update status retur
      */
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|in:N,P,S', // N=New, P=Process, S=Selesai
+            'status' => 'required|in:N,P,S',
         ]);
 
         try {
@@ -131,7 +161,7 @@ class ReturController extends Controller
     }
 
     /**
-     * Hapus retur (opsional, jika diperlukan)
+     * Hapus retur
      */
     public function destroy($id)
     {
@@ -144,5 +174,27 @@ class ReturController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal menghapus retur: ' . $e->getMessage());
         }
+    }
+
+    public function getItemsPenerimaan($idpenerimaan)
+    {
+        $items = DB::table('detail_penerimaan')
+            ->join('barang', 'detail_penerimaan.idbarang', '=', 'barang.idbarang')
+            ->where('detail_penerimaan.idpenerimaan', $idpenerimaan)
+            ->select('barang.nama as nama_barang', 'detail_penerimaan.jumlah')
+            ->get();
+
+        return response()->json($items);
+    }
+
+    public function getItemsPenjualan($idpenjualan)
+    {
+        $items = DB::table('detail_penjualan')
+            ->join('barang', 'detail_penjualan.idbarang', '=', 'barang.idbarang')
+            ->where('detail_penjualan.idpenjualan', $idpenjualan)
+            ->select('barang.nama as nama_barang', 'detail_penjualan.jumlah')
+            ->get();
+
+        return response()->json($items);
     }
 }

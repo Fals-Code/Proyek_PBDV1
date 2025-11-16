@@ -118,4 +118,24 @@ class BarangController extends Controller
 
         return redirect()->route('barang.index')->with('success', 'Status barang berhasil diperbarui.');
     }
+
+    public function getInfo($id)
+    {
+        try {
+            $barang = Barang::findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'nama_barang' => $barang->nama,
+                'stok' => $barang->stok,
+                'harga' => $barang->harga,
+                'satuan' => $barang->satuan ?? 'unit'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Barang tidak ditemukan'
+            ], 404);
+        }
+    }
 }
