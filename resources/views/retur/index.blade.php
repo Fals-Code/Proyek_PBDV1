@@ -114,14 +114,6 @@
                             <form action="{{ route('retur.updateStatus', $r->idretur) }}" method="POST" class="inline">
                                 @csrf
                                 @method('PUT')
-                                <button type="submit" 
-                                        onclick="return confirm('Approve retur ini?')"
-                                        class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs inline-flex items-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                    </svg>
-                                    Approve
-                                </button>
                             </form>
 
                             <form action="{{ route('retur.destroy', $r->idretur) }}" method="POST" class="inline">

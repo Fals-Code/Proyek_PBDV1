@@ -195,7 +195,7 @@ class ReturController extends Controller
 
     public function show($id)
     {
-        // Ambil header retur
+        // Ambil header retur dengan join untuk mendapatkan info vendor
         $retur = DB::table('retur')
             ->join('penerimaan', 'retur.idpenerimaan', '=', 'penerimaan.idpenerimaan')
             ->join('pengadaan', 'penerimaan.idpengadaan', '=', 'pengadaan.idpengadaan')
@@ -203,10 +203,13 @@ class ReturController extends Controller
             ->join('user', 'retur.iduser', '=', 'user.iduser')
             ->where('retur.idretur', $id)
             ->select(
-                'retur.*',
+                'retur.idretur',
+                'retur.created_at',
+                'retur.status',
+                'retur.idpenerimaan',
                 'vendor.nama_vendor',
                 'user.username',
-                'penerimaan.idpengadaan'
+                'pengadaan.idpengadaan'
             )
             ->first();
 
@@ -215,16 +218,18 @@ class ReturController extends Controller
                 ->with('error', 'Retur tidak ditemukan');
         }
 
-        // Ambil detail barang
+        // ✅ PERBAIKAN: Ambil detail barang LANGSUNG dari detail_retur
+        // Tidak perlu join ke detail_penerimaan karena sudah ada di detail_retur
         $details = DB::table('detail_retur')
             ->join('barang', 'detail_retur.idbarang', '=', 'barang.idbarang')
-            ->join('satuan', 'barang.idsatuan', '=', 'satuan.idsatuan')
+            ->leftJoin('satuan', 'barang.idsatuan', '=', 'satuan.idsatuan')
             ->where('detail_retur.idretur', $id)
             ->select(
-                'barang.nama as nama_barang',
-                'satuan.nama_satuan',
+                'detail_retur.iddetail_retur',
                 'detail_retur.jumlah',
-                'detail_retur.alasan'
+                'detail_retur.alasan',
+                'barang.nama as nama_barang',
+                'satuan.nama_satuan'
             )
             ->get();
 
