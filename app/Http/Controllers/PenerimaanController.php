@@ -42,23 +42,30 @@ class PenerimaanController extends Controller
 
         $total = $detail->sum(fn($d) => (float) $d->sub_total_terima);
 
-        // ✅ Cek item yang belum diterima dari pengadaan
+        // ✅ PERBAIKAN: Cek item yang belum diterima dari SEMUA penerimaan pengadaan ini
         $itemBelumDiterima = DB::select("
             SELECT 
                 dp.idbarang,
                 b.nama AS nama_barang,
                 dp.jumlah AS jumlah_pengadaan,
-                COALESCE(SUM(dpr.jumlah_terima), 0) AS sudah_diterima,
-                dp.jumlah - COALESCE(SUM(dpr.jumlah_terima), 0) AS sisa,
-                dp.harga_satuan
+                dp.harga_satuan,
+                COALESCE((
+                    SELECT SUM(dpr.jumlah_terima)
+                    FROM detail_penerimaan dpr
+                    JOIN penerimaan pr ON pr.idpenerimaan = dpr.idpenerimaan
+                    WHERE pr.idpengadaan = ? AND dpr.idbarang = dp.idbarang
+                ), 0) AS sudah_diterima,
+                dp.jumlah - COALESCE((
+                    SELECT SUM(dpr.jumlah_terima)
+                    FROM detail_penerimaan dpr
+                    JOIN penerimaan pr ON pr.idpenerimaan = dpr.idpenerimaan
+                    WHERE pr.idpengadaan = ? AND dpr.idbarang = dp.idbarang
+                ), 0) AS sisa
             FROM detail_pengadaan dp
             JOIN barang b ON b.idbarang = dp.idbarang
-            LEFT JOIN detail_penerimaan dpr ON dpr.idbarang = dp.idbarang
-                AND dpr.idpenerimaan = ?
             WHERE dp.idpengadaan = ?
-            GROUP BY dp.idbarang, b.nama, dp.jumlah, dp.harga_satuan
             HAVING sisa > 0
-        ", [$id, $header->idpengadaan]);
+        ", [$header->idpengadaan, $header->idpengadaan, $header->idpengadaan]);
 
         // ✅ Hitung progress keseluruhan pengadaan
         $progressData = DB::selectOne("
@@ -102,60 +109,15 @@ class PenerimaanController extends Controller
             $idPengadaan = $request->idpengadaan;
             $items       = json_encode($request->items);
 
-            // ✅ Cek apakah sudah ada penerimaan untuk pengadaan ini
-            $penerimaanExists = DB::table('penerimaan')
-                ->where('idpengadaan', $idPengadaan)
-                ->orderByDesc('idpenerimaan')
-                ->first();
+            // ✅ PERBAIKAN: Gunakan stored procedure yang sudah dibuat
+            DB::statement("CALL sp_add_penerimaan_fix(?, ?, ?, @out_id)", [
+                $idPengadaan,
+                $idUser,
+                $items
+            ]);
 
-            if ($penerimaanExists && $penerimaanExists->status != 'S') {
-                // ✅ Jika sudah ada dan belum selesai, tambah ke detail yang ada
-                $idpenerimaan = $penerimaanExists->idpenerimaan;
-
-                // Insert detail baru
-                foreach ($request->items as $item) {
-                    $subtotal = $item['jumlah_terima'] * $item['harga_satuan_terima'];
-
-                    DB::table('detail_penerimaan')->insert([
-                        'idpenerimaan' => $idpenerimaan,
-                        'idbarang' => $item['idbarang'],
-                        'jumlah_terima' => $item['jumlah_terima'],
-                        'harga_satuan_terima' => $item['harga_satuan_terima'],
-                        'sub_total_terima' => $subtotal
-                    ]);
-
-                    // Update kartu stok
-                    $stokAkhir = DB::table('kartu_stok')
-                        ->where('idbarang', $item['idbarang'])
-                        ->orderByDesc('idkartu_stok')
-                        ->value('stock') ?? 0;
-
-                    $stokAkhir += $item['jumlah_terima'];
-
-                    DB::table('kartu_stok')->insert([
-                        'jenis_transaksi' => 'M',
-                        'masuk' => $item['jumlah_terima'],
-                        'keluar' => 0,
-                        'stock' => $stokAkhir,
-                        'idtransaksi' => $idpenerimaan,
-                        'idbarang' => $item['idbarang'],
-                        'created_at' => now()
-                    ]);
-                }
-            } else {
-                // ✅ Jika belum ada, buat penerimaan baru dengan stored procedure
-                DB::statement("CALL sp_add_penerimaan_fix(?, ?, ?, @out_id)", [
-                    $idPengadaan,
-                    $idUser,
-                    $items
-                ]);
-
-                $out = DB::selectOne("SELECT @out_id AS idpenerimaan");
-                $idpenerimaan = $out->idpenerimaan ?? null;
-            }
-
-            // ✅ Update status berdasarkan kelengkapan
-            $this->updateStatusPenerimaan($idPengadaan);
+            $out = DB::selectOne("SELECT @out_id AS idpenerimaan");
+            $idpenerimaan = $out->idpenerimaan ?? null;
 
             DB::commit();
 
@@ -169,116 +131,6 @@ class PenerimaanController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with('error', "Kesalahan: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * ✅ Method untuk tambah detail penerimaan pada ID yang sudah ada
-     */
-    public function addDetail(Request $request, $id)
-    {
-        $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.idbarang' => 'required|integer|exists:barang,idbarang',
-            'items.*.jumlah_terima' => 'required|integer|min:1',
-            'items.*.harga_satuan_terima' => 'required|integer|min:0'
-        ], [
-            'items.required' => 'Minimal 1 item harus ditambahkan',
-            'items.*.idbarang.required' => 'ID Barang wajib diisi',
-            'items.*.jumlah_terima.required' => 'Jumlah terima wajib diisi',
-            'items.*.jumlah_terima.min' => 'Jumlah minimal 1',
-            'items.*.harga_satuan_terima.required' => 'Harga satuan wajib diisi'
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            // Cek apakah penerimaan ID ini ada
-            $penerimaan = DB::table('penerimaan')->find($id);
-
-            if (!$penerimaan) {
-                return back()->with('error', 'Data penerimaan tidak ditemukan.');
-            }
-
-            // Loop untuk insert detail baru
-            foreach ($request->items as $item) {
-                $subtotal = $item['jumlah_terima'] * $item['harga_satuan_terima'];
-
-                // ✅ Insert detail penerimaan
-                DB::table('detail_penerimaan')->insert([
-                    'idpenerimaan' => $id,
-                    'idbarang' => $item['idbarang'],
-                    'jumlah_terima' => $item['jumlah_terima'],
-                    'harga_satuan_terima' => $item['harga_satuan_terima'],
-                    'sub_total_terima' => $subtotal
-                ]);
-
-                // ✅ Update kartu stok
-                $stokAkhir = DB::table('kartu_stok')
-                    ->where('idbarang', $item['idbarang'])
-                    ->orderByDesc('idkartu_stok')
-                    ->value('stock') ?? 0;
-
-                $stokAkhir += $item['jumlah_terima'];
-
-                DB::table('kartu_stok')->insert([
-                    'jenis_transaksi' => 'M',
-                    'masuk' => $item['jumlah_terima'],
-                    'keluar' => 0,
-                    'stock' => $stokAkhir,
-                    'idtransaksi' => $id,
-                    'idbarang' => $item['idbarang'],
-                    'created_at' => now()
-                ]);
-            }
-
-            // ✅ Update status penerimaan berdasarkan kelengkapan
-            $this->updateStatusPenerimaan($penerimaan->idpengadaan);
-
-            DB::commit();
-
-            return redirect()
-                ->route('penerimaan.show', $id)
-                ->with('success', 'Detail penerimaan berhasil ditambahkan!');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->with('error', "Kesalahan: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * ✅ Method untuk update status otomatis
-     */
-    private function updateStatusPenerimaan($idPengadaan)
-    {
-        $data = DB::selectOne("
-            SELECT 
-                COALESCE(SUM(dp.jumlah), 0) AS total_pengadaan,
-                COALESCE((
-                    SELECT SUM(dpr.jumlah_terima)
-                    FROM detail_penerimaan dpr
-                    JOIN penerimaan pr ON pr.idpenerimaan = dpr.idpenerimaan
-                    WHERE pr.idpengadaan = ?
-                ), 0) AS total_diterima
-            FROM detail_pengadaan dp
-            WHERE dp.idpengadaan = ?
-        ", [$idPengadaan, $idPengadaan]);
-
-        if ($data->total_diterima >= $data->total_pengadaan && $data->total_pengadaan > 0) {
-            // Semua sudah diterima
-            DB::table('penerimaan')
-                ->where('idpengadaan', $idPengadaan)
-                ->update(['status' => 'S']);
-
-            DB::table('pengadaan')
-                ->where('idpengadaan', $idPengadaan)
-                ->update(['status' => 'S']);
-        } else {
-            // Masih ada yang belum diterima
-            DB::table('penerimaan')
-                ->where('idpengadaan', $idPengadaan)
-                ->where('status', '!=', 'S')
-                ->update(['status' => 'P']);
         }
     }
 
@@ -305,6 +157,138 @@ class PenerimaanController extends Controller
                 'message' => $e->getMessage(),
                 'line'    => $e->getLine()
             ], 500);
+        }
+    }
+
+    // ✅ PERBAIKAN: Method addDetail untuk menambah detail ke penerimaan yang sudah ada
+    public function addDetail(Request $request, $id)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.idbarang' => 'required|integer',
+            'items.*.jumlah_terima' => 'required|integer|min:1',
+            'items.*.harga_satuan_terima' => 'required|numeric|min:0'
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Ambil data penerimaan
+            $penerimaan = DB::table('penerimaan')->where('idpenerimaan', $id)->first();
+
+            if (!$penerimaan) {
+                return back()->with('error', 'Penerimaan tidak ditemukan.');
+            }
+
+            // Cek apakah penerimaan sudah selesai
+            if ($penerimaan->status == 'S') {
+                return back()->with('error', 'Tidak bisa menambah detail ke penerimaan yang sudah selesai.');
+            }
+
+            foreach ($request->items as $item) {
+                // Validasi: cek sisa yang belum diterima
+                $sisaBelumDiterima = DB::selectOne("
+                    SELECT 
+                        dp.jumlah - COALESCE((
+                            SELECT SUM(dpr.jumlah_terima)
+                            FROM detail_penerimaan dpr
+                            JOIN penerimaan pr ON pr.idpenerimaan = dpr.idpenerimaan
+                            WHERE pr.idpengadaan = ? AND dpr.idbarang = ?
+                        ), 0) AS sisa
+                    FROM detail_pengadaan dp
+                    WHERE dp.idpengadaan = ? AND dp.idbarang = ?
+                ", [
+                    $penerimaan->idpengadaan,
+                    $item['idbarang'],
+                    $penerimaan->idpengadaan,
+                    $item['idbarang']
+                ]);
+
+                if (!$sisaBelumDiterima || $item['jumlah_terima'] > $sisaBelumDiterima->sisa) {
+                    DB::rollBack();
+                    return back()->with('error', 'Jumlah terima melebihi sisa yang belum diterima untuk barang ID: ' . $item['idbarang']);
+                }
+
+                $subtotal = $item['jumlah_terima'] * $item['harga_satuan_terima'];
+
+                // Insert detail penerimaan
+                DB::table('detail_penerimaan')->insert([
+                    'idpenerimaan' => $id,
+                    'idbarang' => $item['idbarang'],
+                    'jumlah_terima' => $item['jumlah_terima'],
+                    'harga_satuan_terima' => $item['harga_satuan_terima'],
+                    'sub_total_terima' => $subtotal
+                ]);
+
+                // Update kartu stok
+                $stokAkhir = DB::table('kartu_stok')
+                    ->where('idbarang', $item['idbarang'])
+                    ->orderByDesc('idkartu_stok')
+                    ->value('stock') ?? 0;
+
+                $stokAkhir += $item['jumlah_terima'];
+
+                DB::table('kartu_stok')->insert([
+                    'jenis_transaksi' => 'M',
+                    'masuk' => $item['jumlah_terima'],
+                    'keluar' => 0,
+                    'stock' => $stokAkhir,
+                    'idtransaksi' => $id,
+                    'idbarang' => $item['idbarang'],
+                    'created_at' => now()
+                ]);
+            }
+
+            // Update status penerimaan dan pengadaan
+            $this->updateStatusPenerimaan($penerimaan->idpengadaan);
+
+            DB::commit();
+
+            return redirect()
+                ->route('penerimaan.show', $id)
+                ->with('success', 'Detail penerimaan berhasil ditambahkan.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', "Kesalahan: " . $e->getMessage());
+        }
+    }
+
+    // Helper method untuk update status
+    private function updateStatusPenerimaan($idPengadaan)
+    {
+        $data = DB::selectOne("
+            SELECT 
+                COALESCE(SUM(dp.jumlah), 0) AS total_pengadaan,
+                COALESCE((
+                    SELECT SUM(dpr.jumlah_terima)
+                    FROM detail_penerimaan dpr
+                    JOIN penerimaan pr ON pr.idpenerimaan = dpr.idpenerimaan
+                    WHERE pr.idpengadaan = ?
+                ), 0) AS total_diterima
+            FROM detail_pengadaan dp
+            WHERE dp.idpengadaan = ?
+        ", [$idPengadaan, $idPengadaan]);
+
+        if ($data->total_diterima >= $data->total_pengadaan && $data->total_pengadaan > 0) {
+            // Semua sudah diterima - status Selesai
+            DB::table('penerimaan')
+                ->where('idpengadaan', $idPengadaan)
+                ->update(['status' => 'S']);
+
+            DB::table('pengadaan')
+                ->where('idpengadaan', $idPengadaan)
+                ->update(['status' => 'S']);
+        } else {
+            // Masih ada yang belum diterima - status Proses
+            DB::table('penerimaan')
+                ->where('idpengadaan', $idPengadaan)
+                ->where('status', '!=', 'S')
+                ->update(['status' => 'P']);
+
+            DB::table('pengadaan')
+                ->where('idpengadaan', $idPengadaan)
+                ->where('status', '!=', 'S')
+                ->update(['status' => 'P']);
         }
     }
 }
