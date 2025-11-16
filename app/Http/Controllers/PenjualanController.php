@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Models\DetailPenjualan;
 
 class PenjualanController extends Controller
 {
@@ -112,5 +113,13 @@ class PenjualanController extends Controller
         }
 
         return view('penjualan.show', compact('penjualan', 'detail'));
+    }
+
+    public function getDetail($id)
+    {
+        $detail = DetailPenjualan::where('idpenjualan', $id)
+            ->with('barang')
+            ->get();
+        return view('penjualan.detail', compact('detail'));
     }
 }

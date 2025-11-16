@@ -89,4 +89,10 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+Route::get('/barang/{id}/info', [BarangController::class, 'getInfo']);
+Route::get('/penjualan/{id}/detail', [PenjualanController::class, 'getDetail']);
+
+Route::get('/retur/get-items-penerimaan/{id}', [ReturController::class, 'getItemsPenerimaan']);
+Route::get('/retur/get-items-penjualan/{id}', [ReturController::class, 'getItemsPenjualan']);
+
 require __DIR__ . '/auth.php';
