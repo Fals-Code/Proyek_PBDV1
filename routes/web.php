@@ -13,6 +13,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\JenisBarangController;
 use App\Http\Controllers\PenjualanController;
+use App\Http\Controllers\StokController;
 
 Route::get('/', function () {
     return redirect('/dashboard');
@@ -73,6 +74,11 @@ Route::middleware(['auth', 'role:1,2'])->group(function () {
         ->name('margin_penjualan.activate');
     Route::put('margin_penjualan/{id}/toggle', [MarginPenjualanController::class, 'toggle'])
         ->name('margin_penjualan.toggle');
+
+    Route::prefix('stok')->group(function () {
+        Route::get('/', [StokController::class, 'index'])->name('stok.index');
+        Route::get('/{id}/detail', [StokController::class, 'detail'])->name('stok.detail');
+    });
 });
 
 Route::middleware(['auth', 'role:1'])->group(function () {

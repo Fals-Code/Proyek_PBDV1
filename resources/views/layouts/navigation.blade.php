@@ -93,7 +93,7 @@
                             <div x-show="openLaporan" @click.outside="openLaporan = false"
                                  x-transition.origin.top.left
                                  class="absolute bg-white border rounded-md shadow-md mt-2 py-2 min-w-[180px]">
-                                <x-dropdown-link href="#">Laporan Stok</x-dropdown-link>
+                                <x-dropdown-link href="{{ route('stok.index') }}">Laporan Stok</x-dropdown-link>
                                 <x-dropdown-link href="#">Laporan Pengadaan</x-dropdown-link>
                                 <x-dropdown-link href="#">Laporan Penjualan</x-dropdown-link>
                                 @if(in_array(Auth::user()->idrole, [1,2]))
