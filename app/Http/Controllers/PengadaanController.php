@@ -48,7 +48,6 @@ class PengadaanController extends Controller
         if (!$id) {
             return back()->with('error', 'Pengadaan gagal dibuat.');
         }
-
         DB::table('pengadaan')
             ->where('idpengadaan', $id)
             ->update(['status' => 'P']);

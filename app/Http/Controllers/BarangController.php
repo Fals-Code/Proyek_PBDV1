@@ -8,9 +8,6 @@ use Illuminate\Support\Facades\DB;
 
 class BarangController extends Controller
 {
-    /**
-     * Tampilkan daftar barang (dengan filter status dan jenis).
-     */
     public function index(Request $request)
     {
         $status = $request->get('status', 'semua');   // default: semua
@@ -24,7 +21,6 @@ class BarangController extends Controller
             $query->where('status', ucfirst($status)); // ubah jadi 'Aktif'/'Nonaktif'
         }
 
-        // Filter jenis barang
         if ($filterJenis !== 'semua') {
             $query->where('jenis_barang', $filterJenis);
         }
