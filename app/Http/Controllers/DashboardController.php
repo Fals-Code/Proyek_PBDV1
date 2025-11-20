@@ -16,15 +16,12 @@ class DashboardController extends Controller
         $terlaris = DB::table('v_barang_terlaris')->get();
         $hampirHabis = DB::table('v_barang_hampir_habis')->get();
 
-        $vendor = DB::table('v_performa_vendor')->get();
-
         return view('dashboard.index', compact(
             'summary',
             'penjualan',
             'pengadaan',
             'terlaris',
-            'hampirHabis',
-            'vendor'
+            'hampirHabis'
         ));
     }
 }
