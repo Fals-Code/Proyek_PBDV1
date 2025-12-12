@@ -48,7 +48,6 @@
                                     <x-dropdown-link :href="route('vendor.index')">Vendor</x-dropdown-link>
                                     <x-dropdown-link :href="route('margin_penjualan.index')">Margin Penjualan</x-dropdown-link>
                                     <x-dropdown-link :href="route('satuan.index')">Satuan</x-dropdown-link>
-                                    <x-dropdown-link :href="route('jenis-barang.index')">Jenis Barang</x-dropdown-link>
                                     @if(Auth::user()->idrole == 1)
                                         <x-dropdown-link :href="route('role.index')">Role</x-dropdown-link>
                                         <x-dropdown-link :href="route('user.index')">User</x-dropdown-link>

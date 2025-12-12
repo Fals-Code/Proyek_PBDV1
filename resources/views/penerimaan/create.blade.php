@@ -78,7 +78,7 @@ document.getElementById('tambah-barang').addEventListener('click', function() {
             </select>
         </td>
         <td class="p-2 text-center">
-            <input type="number" name="items[${idx}][jumlah_terima]" min="1" value="1" 
+            <input type="number" name="items[${idx}][jumlah_terima]" min="0" value="0" 
                    class="w-24 border rounded px-2 py-1 text-center jumlah">
         </td>
         <td class="p-2 text-center">

@@ -35,20 +35,21 @@
                     <select name="status" id="status" class="border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                         <option value="semua" {{ request('status') == 'semua' ? 'selected' : '' }}>Semua</option>
                         <option value="aktif" {{ request('status') == 'aktif' ? 'selected' : '' }}>Aktif</option>
-                        <option value="nonaktif" {{ request('status') == 'nonaktif' ? 'selected' : '' }}>Nonaktif</option>
                     </select>
                 </div>
 
                 <div>
                     <label for="jenis" class="text-sm font-medium text-gray-600">Jenis Barang:</label>
-                    <select name="jenis" id="jenis" class="border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
-                        <option value="semua" {{ request('jenis') == 'semua' ? 'selected' : '' }}>Semua Jenis</option>
-                        @foreach($jenisBarang as $j)
-                            <option value="{{ $j }}" {{ request('jenis') == $j ? 'selected' : '' }}>
-                                {{ $j }}
-                            </option>
-                        @endforeach
-                    </select>
+                    <select name="jenis">
+    <option value="semua">Semua Jenis</option>
+    @foreach($jenisBarang as $kode => $nama)
+        <option value="{{ $kode }}" 
+            {{ $filterJenis == $kode ? 'selected' : '' }}>
+            {{ $nama }}
+        </option>
+    @endforeach
+</select>
+
                 </div>
 
                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-md transition-all duration-300">
@@ -92,18 +93,19 @@
                             Rp{{ number_format($b->harga ?? 0, 0, ',', '.') }}
                         </td>
                         <td class="px-6 py-4 text-center">
-                            <form action="{{ route('barang.toggleStatus', $b->idbarang) }}" method="POST" class="inline">
-                                @csrf
-                                @method('PUT')
-                                <button type="submit"
-                                    class="px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300
-                                        {{ $b->status == 'Aktif' 
-                                            ? 'bg-green-100 text-green-800 hover:bg-green-200 hover:scale-105' 
-                                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300 hover:scale-105' }}">
-                                    {{ $b->status }}
-                                </button>
-                            </form>
-                        </td>
+    <form action="{{ route('barang.toggleStatus', $b->idbarang) }}" method="POST" class="inline">
+        @csrf
+        @method('PUT')
+        <button type="submit"
+            class="px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300
+                {{ $b->status == 1
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200 hover:scale-105'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300 hover:scale-105' }}">
+            {{ $b->status == 1 ? 'Aktif' : 'Nonaktif' }}
+        </button>
+    </form>
+</td>
+
                         <td class="px-6 py-4 text-center space-x-2">
                             <button 
                                 onclick="editBarang({{ json_encode($b) }})"
@@ -150,12 +152,16 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Jenis Barang</label>
-                        <select name="idjenis" id="idjenis" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="">-- Pilih Jenis --</option>
-                            @foreach(DB::table('jenis_barang')->get() as $j)
-                                <option value="{{ $j->idjenis }}">{{ $j->nama_jenis }}</option>
-                            @endforeach
-                        </select>
+                        <select name="jenis" class="form-control">
+    <option value="semua">Semua Jenis</option>
+    @foreach($jenisBarang as $kode => $nama)
+        <option value="{{ $kode }}" 
+            {{ $filterJenis == $kode ? 'selected' : '' }}>
+            {{ $nama }}
+        </option>
+    @endforeach
+</select>
+
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Satuan</label>
@@ -206,9 +212,9 @@ function editBarang(data) {
     form.action = `/barang/${data.idbarang}`;
     
     document.getElementById('nama').value = data.nama_barang ?? data.nama ?? '';
-    document.getElementById('idjenis').value = data.idjenis ?? '';
-    document.getElementById('idsatuan').value = data.idsatuan ?? '';
-    document.getElementById('harga').value = data.harga ?? 0;
+document.getElementById('jenis').value = data.jenis ?? '';
+document.getElementById('idsatuan').value = data.idsatuan ?? '';
+document.getElementById('harga').value = data.harga ?? 0;
 
     toggleModal(true);
 }

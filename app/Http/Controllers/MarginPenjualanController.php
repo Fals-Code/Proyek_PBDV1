@@ -2,28 +2,39 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MarginPenjualan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\MarginPenjualan;
 
 class MarginPenjualanController extends Controller
 {
     public function index(Request $request)
     {
-        $status = $request->get('status', 'all'); // default tampil semua
+        $status = $request->get('status', 'all');
 
-        $query = DB::table('margin_penjualan')->select('*');
 
-        // Filter status jika dipilih "aktif"
         if ($status === 'aktif') {
-            $query->where('status', 1);
-        }
+            // hanya margin aktif
+            $margin = DB::table('v_margin_penjualan_aktif')->get();
+        } else {
+            // view master menampilkan nama status text (Aktif / Nonaktif)
+            $query = DB::table('v_master_margin_penjualan');
 
-        $margin = $query->orderBy('persen', 'asc')->get();
+            if ($status === 'nonaktif') {
+                $query->where('status', 'Nonaktif');
+            }
+
+            // urutkan berdasarkan persen_margin (nama kolom di view)
+            $margin = $query->orderBy('persen_margin', 'asc')->get();
+        }
 
         return view('margin_penjualan.index', compact('margin', 'status'));
     }
 
+
+    /**
+     * Tambah margin baru
+     */
     public function store(Request $request)
     {
         $request->validate([
@@ -32,44 +43,67 @@ class MarginPenjualanController extends Controller
 
         MarginPenjualan::create([
             'persen' => $request->persen,
-            'status' => 1
+            'status' => 0
         ]);
 
-        return redirect()->route('margin_penjualan.index')->with('success', 'Margin berhasil ditambahkan!');
+        return redirect()->route('margin_penjualan.index')
+            ->with('success', 'Margin berhasil ditambahkan!');
     }
 
+
+    /**
+     * Update margin
+     */
     public function update(Request $request, $id)
     {
+        $request->validate([
+            'persen' => 'required|numeric|min:0|max:100',
+        ]);
+
         $margin = MarginPenjualan::findOrFail($id);
 
         $margin->update([
-            'persen_margin' => $request->persen_margin,
-            'status' => $request->status ?? 1
+            'persen' => $request->persen,
+            'status' => $request->status ?? $margin->status
         ]);
 
-        return redirect()->route('margin_penjualan.index')->with('success', 'Margin berhasil diperbarui!');
+        return redirect()->route('margin_penjualan.index')
+            ->with('success', 'Margin berhasil diperbarui!');
     }
 
+
+    /**
+     * Aktifkan margin (mode: cuma 1 aktif)
+     */
+    public function activate($id)
+    {
+        DB::statement("CALL sp_set_margin_aktif(?)", [$id]);
+
+        return redirect()->route('margin_penjualan.index')
+            ->with('success', 'Margin berhasil diaktifkan!');
+    }
+
+
+    /**
+     * Toggle ON/OFF margin
+     */
+    public function toggle($id)
+    {
+        DB::statement("CALL sp_toggle_margin_penjualan(?)", [$id]);
+
+        return redirect()->route('margin_penjualan.index')
+            ->with('success', 'Status margin berhasil diperbarui!');
+    }
+
+
+    /**
+     * Hapus margin
+     */
     public function destroy($id)
     {
         MarginPenjualan::findOrFail($id)->delete();
 
-        return redirect()->route('margin_penjualan.index')->with('success', 'Margin berhasil dihapus.');
-    }
-
-    public function activate($id)
-    {
-        $margin = MarginPenjualan::findOrFail($id);
-        DB::statement('CALL sp_set_margin_aktif(?)', [$id]);
-
         return redirect()->route('margin_penjualan.index')
-            ->with('success', 'Margin ' . $margin->persen_margin . '% telah diaktifkan!');
-    }
-
-    public function toggle($id)
-    {
-        DB::statement('CALL sp_toggle_margin_penjualan(?)', [$id]);
-        return redirect()->route('margin_penjualan.index')
-            ->with('success', 'Status margin berhasil diperbarui!');
+            ->with('success', 'Margin berhasil dihapus.');
     }
 }

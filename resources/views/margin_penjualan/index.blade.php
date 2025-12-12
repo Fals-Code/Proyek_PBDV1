@@ -63,9 +63,9 @@
                         <td class="px-6 py-4 text-center font-bold text-indigo-600">{{ $m->persen_margin ?? $m->persen }}%</td>
                         <td class="px-6 py-4 text-center">
                             <span class="px-3 py-1.5 rounded-full text-xs font-semibold
-                                {{ $m->status == 1 ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600' }}">
-                                {{ $m->status == 1 ? 'Aktif' : 'Nonaktif' }}
-                            </span>
+    {{ $m->status === 'Aktif' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600' }}">
+    {{ $m->status }}
+</span>
                         </td>
                         <td class="px-6 py-4 text-center space-x-2">
                             <form action="{{ route('margin_penjualan.toggle', $m->idmargin_penjualan) }}" method="POST" class="inline">
