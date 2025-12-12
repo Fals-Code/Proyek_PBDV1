@@ -36,7 +36,8 @@ class PengadaanController extends Controller
 
         $items = json_encode($request->items);
 
-        DB::statement("CALL sp_add_pengadaan_lengkap(?, ?, ?, @idpengadaan)", [
+        // PANGGIL SP v3 langsung
+        DB::statement("CALL sp_add_pengadaan_v3(?, ?, ?, @idpengadaan)", [
             Auth::id(),
             $request->vendor_idvendor,
             $items
@@ -48,9 +49,6 @@ class PengadaanController extends Controller
         if (!$id) {
             return back()->with('error', 'Pengadaan gagal dibuat.');
         }
-        DB::table('pengadaan')
-            ->where('idpengadaan', $id)
-            ->update(['status' => 'P']);
 
         return redirect()->route('pengadaan.show', $id)
             ->with('success', 'Pengadaan berhasil dibuat.');

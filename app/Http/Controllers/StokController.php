@@ -9,32 +9,59 @@ class StokController extends Controller
 {
     public function index(Request $request)
     {
-        // Filter dari dropdown
+        // Filter jenis dari dropdown
         $filterJenis = $request->get('jenis', 'all');
 
-        // Ambil data stok dari VIEW
+        // Ambil stok dari VIEW
         $query = DB::table('view_stok_barang');
 
-        // Jika filter jenis dipilih
+        // Filter jika user memilih jenis tertentu
         if ($filterJenis !== 'all') {
             $query->where('nama_jenis', $filterJenis);
         }
 
         $stokBarang = $query->orderBy('nama_barang', 'asc')->get();
 
-        // Dropdown jenis barang
-        $jenisBarang = DB::table('jenis_barang')->pluck('nama_jenis');
+        // Dropdown jenis berdasarkan kolom 'jenis' di tabel barang
+        // lalu di-convert ke label agar sama dengan nama_jenis di view
+        $jenisMapping = [
+            'S' => 'Sembako',
+            'M' => 'Minuman',
+            'N' => 'Snack',
+            'E' => 'Elektronik',
+            'D' => 'Peralatan Dapur',
+        ];
+
+        $jenisBarang = DB::table('barang')
+            ->select('jenis')
+            ->distinct()
+            ->get()
+            ->map(function ($row) use ($jenisMapping) {
+                return $jenisMapping[$row->jenis] ?? 'Tidak diketahui';
+            });
 
         return view('stok.index', compact('stokBarang', 'jenisBarang', 'filterJenis'));
     }
 
     public function detail($idbarang)
     {
-        // Informasi barang tetap dari tabel barang
+        // Ambil data barang tanpa JOIN jenis_barang (karena tabelnya sudah tidak ada)
         $barang = DB::table('barang as b')
             ->leftJoin('satuan as s', 'b.idsatuan', '=', 's.idsatuan')
-            ->leftJoin('jenis_barang as j', 'b.idjenis', '=', 'j.idjenis')
-            ->select('b.*', 's.nama_satuan', 'j.nama_jenis')
+            ->select(
+                'b.*',
+                's.nama_satuan',
+                DB::raw("
+                    CASE b.jenis
+                        WHEN 'S' THEN 'Sembako'
+                        WHEN 'M' THEN 'Minuman'
+                        WHEN 'N' THEN 'Snack'
+                        WHEN 'E' THEN 'Elektronik'
+                        WHEN 'D' THEN 'Peralatan Dapur'
+                        ELSE 'Tidak diketahui'
+                    END AS nama_jenis
+                ")
+            )
             ->where('b.idbarang', $idbarang)
             ->first();
 
@@ -42,11 +69,9 @@ class StokController extends Controller
             return redirect()->route('stok.index')->with('error', 'Barang tidak ditemukan.');
         }
 
-        // Riwayat kartu stok ambil dari VIEW
+        // Riwayat kartu stok dari VIEW
         $kartuStok = DB::table('view_kartu_stok_detail')
             ->where('idbarang', $idbarang)
-            ->orderBy('created_at', 'desc')
-            ->orderBy('idkartu_stok', 'desc')
             ->get();
 
         // Stok akhir dari VIEW
